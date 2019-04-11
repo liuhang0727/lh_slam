@@ -1,0 +1,8 @@
+<!-- -->
+<launch>
+
+<node pkg="lh_slam" type="feature_node" name="feature_node" output="screen">
+    <param name="skip_count" value="0" />
+</node>
+
+</launch>
