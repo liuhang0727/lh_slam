@@ -10,6 +10,7 @@ feature::feature()
     _if_qhd_cloud = false;
     _if_qhd_rgb_image = false;
     _if_qhd_depth_image = false;
+    _if_first_frame = true;
     
     _msgs_index = 0;
 }
@@ -26,10 +27,10 @@ bool feature::init(ros::NodeHandle &node, ros::NodeHandle &private_node)
     private_node.getParam("skip_count", _skip_count);
 
     //subscribe and publish msgs
-    _sub_qhd_cloud = node.subscribe<sensor_msgs::PointCloud2>("/kinect2/sd/points", 10, &feature::qhd_cloud_handler, this);
+    _sub_qhd_cloud = node.subscribe<sensor_msgs::PointCloud2>("/kinect2/qhd/points", 10, &feature::qhd_cloud_handler, this);
     _sub_qhd_rgb = node.subscribe<sensor_msgs::Image>("/kinect2/qhd/image_color_rect", 10, &feature::qhd_rgb_handler, this);
     // _sub_qhd_depth = node.subscribe<sensor_msgs::Image>("/kinect2/qhd/image_depth_rect", 10, &feature::qhd_depth_handler, this);
-    _pub_image = node.advertise<sensor_msgs::Image>("/keypoints_image", 10);
+    _pub_image = node.advertise<sensor_msgs::Image>("/match_image", 10);
 
     //start the process thread
     _process_thread = std::thread(&feature::spin, this);
@@ -78,8 +79,11 @@ void feature::process()
     if(!data_match())
     { return; }
 
-    //detect 2D features in rgb image
-    feature_detect();
+    // //detect 2D features in rgb image, and macth two images
+    if(!feature_detect())
+    { return; } 
+
+
 
     //publish msgs
     publish_msgs();
@@ -88,15 +92,15 @@ void feature::process()
 //the recall handler of qhd_cloud msgs
 inline void feature::qhd_cloud_handler(const sensor_msgs::PointCloud2::ConstPtr &qhd_cloud_msg)
 {
+    _mutex.lock();
+    
     ros::Time time = ros::Time::now();
     _qhd_cloud_time = qhd_cloud_msg->header.stamp;
     _qhd_cloud->clear();
     pcl::fromROSMsg(*qhd_cloud_msg, *_qhd_cloud);
     _if_qhd_cloud = true;
-   
-    // std::cout<<"点云: "<<_qhd_cloud_time<<std::endl;
-    // std::cout<<"点云 now: "<<time<<std::endl;
-    // std::cout<<"received qhd_cloud msgs..."<<std::endl;
+
+    _mutex.unlock();
 }
 
 //the recall handler of qhd_rgb msgs
@@ -115,11 +119,7 @@ inline void feature::qhd_rgb_handler(const sensor_msgs::Image::ConstPtr &qhd_rgb
         if(_qhd_rgb_image_map.size() > 8)
         { _qhd_rgb_image_map.erase(_qhd_rgb_image_map.begin()); }
 
-        // std::cout<<"彩色图像: "<<qhd_rgb_time<<std::endl;
-        // std::cout<<"彩色图像 now: "<<time<<std::endl;
-        // // std::cout<<fabs((_qhd_rgb_time - _qhd_depth_time).toSec())<<std::endl;
-        // // std::cout<<"rows: "<<_qhd_rgb_image->image.rows<<"  cols: "<<_qhd_rgb_image->image.cols<<std::endl;
-        // // std::cout<<"received qhd_rgb msgs ..."<<std::endl;
+        // std::cout<<"rows: "<<qhd_rgb_image->image.rows<<"  cols: "<<qhd_rgb_image->image.cols<<std::endl;
     }
     catch(cv_bridge::Exception& e)
     {
@@ -142,11 +142,6 @@ inline void feature::qhd_depth_handler(const sensor_msgs::Image::ConstPtr &qhd_d
         _qhd_depth_time = qhd_depth_msg->header.stamp;
         _qhd_depth_image = cv_bridge::toCvCopy(qhd_depth_msg, "16UC1");
         _if_qhd_depth_image = true;
-
-        // std::cout<<"深度图像: "<<_qhd_depth_time<<std::endl;
-        // std::cout<<"深度图像 now: "<<time<<std::endl<<std::endl;
-        // std::cout<<"rows: "<<_qhd_rgb_image->image.rows<<"  cols: "<<_qhd_rgb_image->image.cols<<std::endl;
-        // std::cout<<"received qhd_depth msgs ..."<<std::endl;
     }
     catch(cv_bridge::Exception& e)
     {
@@ -174,39 +169,10 @@ inline void feature::reset()
     _if_qhd_cloud = false;
     _if_qhd_rgb_image = false;
     _if_qhd_depth_image = false;
-}
 
-//search corresponding frame in rgb_image_map for cloud frame 
-inline bool feature::data_match()
-{
-    auto it = _qhd_rgb_image_map.find(_qhd_cloud_time);
-    if(it == _qhd_rgb_image_map.end())
-    { return false; }
-
-    _qhd_rgb_image = it->second->image;
-    return true;
-}
-
-//feature detect in rgb image
-void feature::feature_detect()
-{
-    //feature detect in OpenCV3.X, the contrib is needed for SIFT and SURF
-    cv::Ptr<cv::FeatureDetector> detector = cv::xfeatures2d::SIFT::create();
-    // cv::Ptr<cv::Feature2D> detector = cv::xfeatures2d::SURF::create();
-    // cv::Ptr<cv::FeatureDetector> detector = cv::ORB::create();
-
-    //feature deatect in OpenCV2.x
-    // cv::Ptr<cv::FeatureDetector> detector = cv::FeatureDetector::create("ORB");
-
-    std::vector<cv::KeyPoint> keypoints;
-    detector->detect(_qhd_rgb_image, keypoints);
-    cv::drawKeypoints(_qhd_rgb_image, keypoints, keypoints_image, 
-                      cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-
-    std::cout<<"feature detected ..."<<std::endl;            
-
-    // std::string path = "/home/liuhang/Documents/" + std::to_string(_msgs_index) + ".png";
-    // cv::imwrite(path, keypoints_image);
+    _last_qhd_rgb_image = _qhd_rgb_image.clone();
+    _last_qhd_rgb_keypoints = _qhd_rgb_keypoints;
+    _last_qhd_rgb_descriptor = _qhd_rgb_descriptor.clone();
 }
 
 //publish cloud msg
@@ -233,5 +199,70 @@ inline void feature::publish_image_msg(ros::Publisher &publisher,
 //publish msgs
 inline void feature::publish_msgs()
 {
-    publish_image_msg(_pub_image, keypoints_image, _qhd_cloud_time, "kinect2_rgb_optical_frame");
+    publish_image_msg(_pub_image, _match_image, _qhd_cloud_time, "kinect2_rgb_optical_frame");
+}
+
+//search corresponding frame in rgb_image_map for cloud frame 
+inline bool feature::data_match()
+{
+    auto it = _qhd_rgb_image_map.find(_qhd_cloud_time);
+    if(it == _qhd_rgb_image_map.end())
+    { return false; }
+
+    _qhd_rgb_image = it->second->image;
+    return true;
+}
+
+//feature detect in rgb image
+bool feature::feature_detect()
+{
+    _matches.clear();
+
+    //feature deatect in OpenCV2.x
+    // cv::Ptr<cv::FeatureDetector> detector = cv::FeatureDetector::create("ORB");
+
+    //feature detect in OpenCV3.X, the contrib is needed for SIFT and SURF
+    // cv::Ptr<cv::xfeatures2d::SURF> detector = cv::xfeatures2d::SURF::create();  //180ms for qhd size
+    // cv::Ptr<cv::xfeatures2d::SIFT> detector = cv::xfeatures2d::SIFT::create();  //300ms for qhd size
+    cv::Ptr<cv::ORB> detector = cv::ORB::create();  //30ms for qhd size
+
+    if(_if_first_frame)
+    {
+        _last_qhd_rgb_image = _qhd_rgb_image.clone();
+        detector->detect(_last_qhd_rgb_image, _last_qhd_rgb_keypoints);
+        detector->compute(_last_qhd_rgb_image, _last_qhd_rgb_keypoints, _last_qhd_rgb_descriptor);
+        _if_first_frame = false;
+        return false;
+    }
+
+    detector->detect(_qhd_rgb_image, _qhd_rgb_keypoints);
+    detector->compute(_qhd_rgb_image, _qhd_rgb_keypoints, _qhd_rgb_descriptor);
+
+    cv::BFMatcher matcher(cv::NORM_HAMMING);
+    std::vector<cv::DMatch> temp_matches;
+    matcher.match(_last_qhd_rgb_descriptor, _qhd_rgb_descriptor, temp_matches);
+
+    double min_dist = 1000, max_dist = 0;
+    for(int i=0; i<temp_matches.size(); i++)
+    {
+        double dist = temp_matches[i].distance;
+        if(dist < min_dist) min_dist = dist;
+        if(dist > max_dist) max_dist = dist;
+    }
+    for(int i=0; i<temp_matches.size(); i++)
+    {
+        if(temp_matches[i].distance <= std::max(2*min_dist, 30.0))
+        { _matches.push_back(temp_matches[i]); }  
+    }
+    cv::drawMatches(_last_qhd_rgb_image, _last_qhd_rgb_keypoints,
+                    _qhd_rgb_image, _qhd_rgb_keypoints,
+                    _matches, _match_image);
+
+    // cv::drawKeypoints(_qhd_rgb_image, _qhd_rgb_keypoints, _keypoints_image, 
+                //   cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);    
+
+    // std::string path = "/home/liuhang/Documents/" + std::to_string(_msgs_index) + ".png";
+    // cv::imwrite(path, _qhd_rgb_image);
+
+    return true;
 }

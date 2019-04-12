@@ -37,12 +37,6 @@ class feature
         //set the msgs flag to false, prapare for next frame
         inline void reset();
 
-        //search corresponding frame in rgb_image_map for cloud frame 
-        inline bool data_match();
-
-        //feature detect in rgb image
-        void feature_detect();
-
         //publish cloud msg
         inline void publish_cloud_msg(ros::Publisher &publisher, 
                                       const CloudT &cloud, const ros::Time &time, std::string frame_id);
@@ -53,6 +47,12 @@ class feature
 
         //publish msgs
         inline void publish_msgs();
+
+        //search corresponding frame in rgb_image_map for cloud frame 
+        inline bool data_match();
+
+        //feature detect in rgb image
+        bool feature_detect();
 
 
     private:
@@ -69,7 +69,21 @@ class feature
         ros::Time _qhd_depth_time;  //time stamp of qhd_depth image
 
         CloudT::Ptr _qhd_cloud;  //qhd_cloud in pcl format
+
+
+
         cv::Mat _qhd_rgb_image;  //qhd_rgb cv image
+        cv::Mat _last_qhd_rgb_image;  //the last frame qhd_rgb_image
+        std::vector<cv::KeyPoint> _qhd_rgb_keypoints;  //the keypoints of the current rgb frame
+        std::vector<cv::KeyPoint> _last_qhd_rgb_keypoints;  //the keypoints of the last rgb frame
+        cv::Mat _qhd_rgb_descriptor;  //the feature descriptor of current rgb frame 
+        cv::Mat _last_qhd_rgb_descriptor;  //the feature descriptor of last rgb frame
+        std::vector<cv::DMatch> _matches;  //matches of two frames
+        cv::Mat _keypoints_image;
+        cv::Mat _match_image;
+
+
+
         // cv_bridge::CvImagePtr _qhd_rgb_image;  //qhd_rgb cv image
         cv_bridge::CvImagePtr _qhd_depth_image;  //qhd_depth cv image
 
@@ -80,10 +94,10 @@ class feature
         bool _if_qhd_rgb_image;  //the flag of whether a new qhd_rgb_image msg received
         bool _if_qhd_depth_image;  //the flag of whether a new qhd_depth_image msg received
 
-        int _msgs_index;  //the total msgs index
-        int _skip_count;  //skip some frame to reduce the compution
+        bool _if_first_frame;  //the flag of whether it's the first process frame, to 2D feature match 
 
-        cv::Mat keypoints_image;
+        long _msgs_index;  //the total msgs index
+        int _skip_count;  //skip some frame to reduce the compution
         
 };
 
