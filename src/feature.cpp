@@ -29,9 +29,9 @@ bool feature::init(ros::NodeHandle &node, ros::NodeHandle &private_node)
 
     //subscribe and publish msgs
     _sub_qhd_cloud = node.subscribe<sensor_msgs::PointCloud2>("/kinect2/qhd/points", 10, &feature::qhd_cloud_handler, this);
-    _sub_qhd_rgb = node.subscribe<sensor_msgs::Image>("/kinect2/qhd/image_color", 10, &feature::qhd_rgb_handler, this);
+    _sub_qhd_rgb = node.subscribe<sensor_msgs::Image>("/kinect2/hd/image_color", 10, &feature::qhd_rgb_handler, this);
     _sub_sd_ir = node.subscribe<sensor_msgs::Image>("/kinect2/sd/image_ir", 10, &feature::sd_ir_handler, this);
-    // _sub_qhd_depth = node.subscribe<sensor_msgs::Image>("/kinect2/qhd/image_depth_rect", 10, &feature::qhd_depth_handler, this);
+    _sub_qhd_depth = node.subscribe<sensor_msgs::Image>("/kinect2/sd/image_depth", 10, &feature::qhd_depth_handler, this);
     _pub_image = node.advertise<sensor_msgs::Image>("/match_image", 10);
 
     //start the process thread
@@ -82,16 +82,15 @@ void feature::process()
     { return; }
 
     // detect 2D features in rgb image, and macth two images
+    //for rgb images
     // bool b = feature_detect(_last_qhd_rgb_image, _qhd_rgb_image, _last_qhd_rgb_keypoints, _qhd_rgb_keypoints,
     //                         _last_qhd_rgb_descriptor, _qhd_rgb_descriptor,
     //                         _qhd_rgb_matches, _match_image, _if_first_frame);
 
-    //for ir image
-    gray_stretch();
+    //for ir images
     bool b = feature_detect(_last_sd_ir_image, _sd_ir_image, _last_sd_ir_keypoints, _sd_ir_keypoints, 
                             _last_sd_ir_descriptor, _sd_ir_descriptor,
                             _sd_ir_matches, _match_image, _if_first_frame);
-
     
 
     if(!b)
@@ -126,10 +125,16 @@ inline void feature::qhd_rgb_handler(const sensor_msgs::Image::ConstPtr &qhd_rgb
         // //"toCvCopy" or "toCvShare"
         ros::Time qhd_rgb_time = qhd_rgb_msg->header.stamp;
         cv_bridge::CvImagePtr qhd_rgb_image = cv_bridge::toCvCopy(qhd_rgb_msg, "8UC3");
-
+        
         _qhd_rgb_bridge_map[qhd_rgb_time] = qhd_rgb_image;
         if(_qhd_rgb_bridge_map.size() > 8)
         { _qhd_rgb_bridge_map.erase(_qhd_rgb_bridge_map.begin()); }
+
+        // save images
+        // double t = qhd_rgb_time.toSec();
+        // std::string file_path = "/home/liuhang/data/calibration/" + std::to_string(t) + "_rgb.png";
+        // cv::imwrite(file_path, qhd_rgb_image->image);
+        // std::cout<<qhd_rgb_time<<"     rgb image saved!"<<std::endl;
     }
     catch(cv_bridge::Exception& e)
     {
@@ -152,6 +157,12 @@ inline void feature::qhd_depth_handler(const sensor_msgs::Image::ConstPtr &qhd_d
         _qhd_depth_time = qhd_depth_msg->header.stamp;
         _qhd_depth_bridge = cv_bridge::toCvCopy(qhd_depth_msg, "16UC1");
         _if_qhd_depth_image = true;
+
+        // save images
+        // double t = _qhd_depth_time.toSec();
+        // std::string file_path = "/home/liuhang/data/calibration/" + std::to_string(t) + "_depth.png";
+        // cv::imwrite(file_path, _qhd_depth_bridge->image);
+        // std::cout<<_qhd_depth_time<<"     depth image saved!"<<std::endl;
     }
     catch(cv_bridge::Exception& e)
     {
@@ -172,6 +183,14 @@ inline void feature::sd_ir_handler(const sensor_msgs::Image::ConstPtr &sd_ir_msg
         _sd_ir_time = sd_ir_msg->header.stamp;
         _sd_ir_bridge = cv_bridge::toCvCopy(sd_ir_msg, "8UC1");
         _if_sd_ir_image = true;
+
+        gray_stretch();
+
+        // save images
+        // double t = _sd_ir_time.toSec();
+        // std::string file_path = "/home/liuhang/data/calibration/" + std::to_string(t) + "_ir.png";
+        // cv::imwrite(file_path, _sd_ir_image);
+        // std::cout<<_sd_ir_time<<"     ir image saved!"<<std::endl;
     }
     catch(const std::exception& e)
     {
@@ -185,9 +204,9 @@ inline void feature::sd_ir_handler(const sensor_msgs::Image::ConstPtr &sd_ir_msg
 //ensure the all data are from the same frame, and each frame only be processed once
 inline bool feature::if_new_data()
 {
-    // // std::cout<<fabs((_qhd_depth_time - _qhd_rgb_time).toSec())<<std::endl;
+    // std::cout<<fabs((_qhd_depth_time - _qhd_rgb_time).toSec())<<std::endl;
     // return _if_qhd_rgb_image && _if_qhd_depth_image &&
-            //   fabs((_qhd_cloud_time - _qhd_rgb_time).toSec()) < 0.05;  //0.3
+    //        fabs((_qhd_cloud_time - _qhd_rgb_time).toSec()) < 0.05;  //0.3
     //        fabs((_qhd_depth_time - _qhd_rgb_time).toSec()) <0.05;
 
     return _if_qhd_cloud && _if_sd_ir_image;
@@ -297,7 +316,7 @@ bool feature::feature_detect(cv::Mat &last_image, cv::Mat &image,
                     matches, match_image);
 
     // cv::drawKeypoints(image, keypoints, _keypoints_image, 
-                //   cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);    
+    //               cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);    
 
     // std::string path = "/home/liuhang/Documents/" + std::to_string(_msgs_index) + ".png";
     // cv::imwrite(path, image);
