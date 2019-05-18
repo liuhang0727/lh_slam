@@ -5,7 +5,7 @@
 #include "feature.h"
 
 feature::feature()
-    :_qhd_cloud(new CloudT())
+    :_qhd_cloud(new CloudA()), _plane_cloud(new CloudA())
 {
     _if_qhd_cloud = false;
     _if_qhd_rgb_image = false;
@@ -28,11 +28,12 @@ bool feature::init(ros::NodeHandle &node, ros::NodeHandle &private_node)
     private_node.getParam("skip_count", _skip_count);
 
     //subscribe and publish msgs
-    _sub_qhd_cloud = node.subscribe<sensor_msgs::PointCloud2>("/kinect2/qhd/points", 10, &feature::qhd_cloud_handler, this);
-    _sub_qhd_rgb = node.subscribe<sensor_msgs::Image>("/kinect2/hd/image_color", 10, &feature::qhd_rgb_handler, this);
+    _sub_qhd_cloud = node.subscribe<sensor_msgs::PointCloud2>("/kinect2/sd/points", 10, &feature::qhd_cloud_handler, this);
+    _sub_qhd_rgb = node.subscribe<sensor_msgs::Image>("/kinect2/sd/image_color_rect", 10, &feature::qhd_rgb_handler, this);
     _sub_sd_ir = node.subscribe<sensor_msgs::Image>("/kinect2/sd/image_ir", 10, &feature::sd_ir_handler, this);
     _sub_qhd_depth = node.subscribe<sensor_msgs::Image>("/kinect2/sd/image_depth", 10, &feature::qhd_depth_handler, this);
     _pub_image = node.advertise<sensor_msgs::Image>("/match_image", 10);
+    _pub_cloud = node.advertise<sensor_msgs::PointCloud2>("/plane_cloud", 10);
 
     //start the process thread
     _process_thread = std::thread(&feature::spin, this);
@@ -88,13 +89,15 @@ void feature::process()
     //                         _qhd_rgb_matches, _match_image, _if_first_frame);
 
     //for ir images
-    bool b = feature_detect(_last_sd_ir_image, _sd_ir_image, _last_sd_ir_keypoints, _sd_ir_keypoints, 
-                            _last_sd_ir_descriptor, _sd_ir_descriptor,
-                            _sd_ir_matches, _match_image, _if_first_frame);
+    // bool b = feature_detect(_last_sd_ir_image, _sd_ir_image, _last_sd_ir_keypoints, _sd_ir_keypoints, 
+    //                         _last_sd_ir_descriptor, _sd_ir_descriptor,
+    //                         _sd_ir_matches, _match_image, _if_first_frame);
     
+    // if(!b)
+    // { return; }
 
-    if(!b)
-    { return; }  
+    plane p(_qhd_cloud);
+    p.process(_plane_cloud);
 
     // publish msgs
     publish_msgs();
@@ -110,6 +113,16 @@ inline void feature::qhd_cloud_handler(const sensor_msgs::PointCloud2::ConstPtr 
     _qhd_cloud->clear();
     pcl::fromROSMsg(*qhd_cloud_msg, *_qhd_cloud);
     _if_qhd_cloud = true;
+
+    //down sample
+    // uniform_downsample(_qhd_cloud, _plane_cloud, 5);
+    // publish_cloud_msg(_pub_cloud, _plane_cloud, _qhd_cloud_time, "kinect2_ir_optical_frame");
+
+    //extract planes
+    // plane_extract();
+    // plane p(_qhd_cloud);
+    // p.process(_plane_cloud);
+    
 
     _mutex.unlock();
 }
@@ -231,10 +244,10 @@ inline void feature::reset()
 
 //publish cloud msg
 inline void feature::publish_cloud_msg(ros::Publisher &publisher, 
-                                       const CloudT &cloud, const ros::Time &time, std::string frame_id)
+                                       const CloudA::Ptr &cloud, const ros::Time &time, std::string frame_id)
 {
     sensor_msgs::PointCloud2 msg;
-    pcl::toROSMsg(cloud, msg);
+    pcl::toROSMsg(*cloud, msg);
     msg.header.stamp = time;
     msg.header.frame_id = frame_id;
     publisher.publish(msg);
@@ -253,7 +266,8 @@ inline void feature::publish_image_msg(ros::Publisher &publisher, const cv::Mat 
 //publish msgs
 inline void feature::publish_msgs()
 {
-    publish_image_msg(_pub_image, _match_image, _qhd_cloud_time, "kinect2_rgb_optical_frame", "8UC3");
+    // publish_image_msg(_pub_image, _match_image, _qhd_cloud_time, "kinect2_ir_optical_frame", "8UC3");
+    publish_cloud_msg(_pub_cloud, _plane_cloud, _qhd_cloud_time, "kinect2_ir_optical_frame");
 }
 
 //search corresponding frame in rgb_image_map for cloud frame 
@@ -287,13 +301,15 @@ bool feature::feature_detect(cv::Mat &last_image, cv::Mat &image,
     if(if_first_frame)
     {
         last_image = image.clone();
-        detector->detect(last_image, last_keypoints);
+        // detector->detect(last_image, last_keypoints);
+        detect(detector, last_image, 250, last_keypoints);
         detector->compute(last_image, last_keypoints, last_descriptor);
         if_first_frame = false;
         return false;
     }
 
-    detector->detect(image, keypoints);
+    // detector->detect(image, keypoints);
+    detect(detector, image, 250, keypoints);
     detector->compute(image, keypoints, descriptor);
 
     cv::BFMatcher matcher(cv::NORM_HAMMING);
@@ -315,6 +331,9 @@ bool feature::feature_detect(cv::Mat &last_image, cv::Mat &image,
     cv::drawMatches(last_image, last_keypoints, image, keypoints,
                     matches, match_image);
 
+    // std::cout<<"kp count: "<<keypoints.size()<<std::endl;
+    // std::cout<<"temp_matches count: "<<temp_matches.size()<<std::endl;                
+    // std::cout<<"matches count: "<<matches.size()<<std::endl;                
     // cv::drawKeypoints(image, keypoints, _keypoints_image, 
     //               cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);    
 
@@ -381,3 +400,39 @@ void feature::gray_stretch()
         }
     }
 }
+
+//extract planes from point cloud
+void feature::plane_extract()
+{
+    _plane_cloud->clear();
+
+    CloudA::Ptr cloud_temp(new CloudA());
+    down_sample(_qhd_cloud, cloud_temp, 0.03);
+
+    pcl::PointIndices::Ptr plane_indices(new pcl::PointIndices);
+    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+    pcl::SACSegmentation<PointA> seg;
+    seg.setOptimizeCoefficients(true);
+    seg.setModelType(pcl::SACMODEL_PLANE);
+    seg.setMethodType(pcl::SAC_RANSAC);
+    seg.setDistanceThreshold(0.03);  //0.10
+    seg.setInputCloud(cloud_temp);
+    seg.segment(*plane_indices, *coefficients);
+
+    for(int i=0; i<plane_indices->indices.size();i++)
+    {
+        _plane_cloud->points.push_back(cloud_temp->points[plane_indices->indices[i]]);    
+    }
+
+    publish_cloud_msg(_pub_cloud, _plane_cloud, _qhd_cloud_time, "kinect2_ir_optical_frame");
+}
+
+ //down sample
+inline void feature::down_sample(CloudA::Ptr &cloud_in, CloudA::Ptr &cloud_out, double leaf_size)
+{
+    pcl::VoxelGrid<PointA> voxel;
+    voxel.setLeafSize(leaf_size, leaf_size, leaf_size);
+    voxel.setInputCloud(cloud_in);
+    voxel.filter(*cloud_out);
+}
+

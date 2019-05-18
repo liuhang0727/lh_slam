@@ -5,7 +5,10 @@
 #ifndef FEATURE_H
 #define FEATURE_H
 
-#include "common_headers.h"
+#include "common/common_headers.h"
+#include "common/downsample_utils.h"
+#include "subimage_feature.h"
+#include "plane.h"
 
 class feature
 {
@@ -42,7 +45,7 @@ class feature
 
         //publish cloud msg
         inline void publish_cloud_msg(ros::Publisher &publisher, 
-                                      const CloudT &cloud, const ros::Time &time, std::string frame_id);
+                                      const CloudA::Ptr &cloud, const ros::Time &time, std::string frame_id);
 
         //publish image msg
         inline void publish_image_msg(ros::Publisher &publisher, const cv::Mat &image_mat,
@@ -64,6 +67,13 @@ class feature
         //stretch the gray scale of ir image to ensure feature extract process
         void gray_stretch();
 
+        //extract planes from point cloud
+        void plane_extract();
+
+        //down sample
+        inline void down_sample(CloudA::Ptr &cloud_in, CloudA::Ptr &cloud_out, double leaf_size);
+
+
 
     private:
         std::thread _process_thread;  //the process thread
@@ -74,13 +84,15 @@ class feature
         ros::Subscriber _sub_qhd_depth;  //subscriber of qhd_depth image
         ros::Subscriber _sub_sd_ir;  //subscriber of sd_ir image
         ros::Publisher _pub_image;  //publisher of image
+        ros::Publisher _pub_cloud;  //publisher of cloud
         
         ros::Time _qhd_cloud_time;  //time stamp of qhd_cloud
         // ros::Time _qhd_rgb_time;  //time stamp of qhd_rgb image
         ros::Time _qhd_depth_time;  //time stamp of qhd_depth image
         ros::Time _sd_ir_time;  //time stamp of sd_ir image
 
-        CloudT::Ptr _qhd_cloud;  //qhd_cloud in pcl format
+        CloudA::Ptr _qhd_cloud;  //qhd_cloud in pcl format
+        CloudA::Ptr _plane_cloud;  //plane set in point cloud
 
         cv::Mat _qhd_rgb_image;  //qhd_rgb cv image
         cv::Mat _sd_ir_image;  //sd_ir cv image
