@@ -43,6 +43,7 @@ catkin_package(
 include_directories(
   /user/local/include/
   ${PROJECT_SOURCE_DIR}/include/
+  ${PROJECT_SOURCE_DIR}/include/common/
   ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}

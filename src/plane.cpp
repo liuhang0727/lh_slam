@@ -12,21 +12,127 @@ void plane::process(CloudA::Ptr plane_cloud)
 {
     plane_cloud->clear();
 
-    uniform_downsample(_init_cloud, _ds_cloud, 5);  //6
-    plane_detect(_ds_cloud, _ca_cloud);
+    // voxel_grid(_init_cloud, _ds_cloud, 0.2);  //for faro 0.1~0.2
+    uniform_downsample(_init_cloud, _ds_cloud, 5);  //for kinect 5
 
-    //down sample param 6
-    std::vector<int> in, out;
-    for(int i=0; i<_ca_cloud->points.size(); i++)
-    { in.push_back(i); }
-    plane_fitting(_ca_cloud, in, 100, plane_cloud, out);
+    /* detect planes by region_grow, the performance is better than plan_fitting */
+    region_grow(_ds_cloud, plane_cloud, _plane_params);
+    
 
-    // region_grow(_ds_cloud, _plane_cloud);
+
+
+
+    /* detect planes by plane_fitting */
+    // plane_detect(_ds_cloud, _ca_cloud);
+    // std::vector<int> in, out;
+    // for(int i=0; i<_ca_cloud->points.size(); i++)
+    // { in.push_back(i); }
+    // multi_plane_fitting(_ca_cloud, in, 100, plane_cloud, out);
 }
 
-//
+// plane segmentation by region growing
+void plane::region_grow(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, std::vector<Eigen::Vector4f> &params)
+{
+    // delete NAN points
+    CloudA::Ptr cloud_nonan(new CloudA());
+    for(int i=0; i<cloud_in->points.size(); i++)
+    {
+        float d = cloud_in->points[i].z;
+        if(d == d)
+        { cloud_nonan->points.push_back(cloud_in->points[i]); }
+    }
+
+    // build kd-tree
+    pcl::search::KdTree<PointA>::Ptr tree(new pcl::search::KdTree<PointA>);
+    tree->setInputCloud(cloud_nonan);
+
+    // compute normal vector
+    pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
+    pcl::NormalEstimationOMP<PointA, pcl::Normal> n;
+    n.setSearchMethod(tree);
+    n.setKSearch(10);  //10
+    n.setInputCloud(cloud_nonan);
+    n.compute(*normals);
+
+    // region growing
+    std::vector<pcl::PointIndices> clusters;
+    pcl::RegionGrowing<PointA, pcl::Normal> reg;
+    reg.setSearchMethod(tree);
+    reg.setMinClusterSize(50);
+    reg.setMaxClusterSize(100000);
+    reg.setNumberOfNeighbours(4);  //4
+    reg.setSmoothnessThreshold(8/180.0*M_PI);  //8
+    reg.setCurvatureThreshold(0.1);  //0.1
+    reg.setInputCloud(cloud_nonan);
+    reg.setInputNormals(normals);
+    reg.extract(clusters);
+
+    // compute plane parmas for each cluster
+    for (std::vector<pcl::PointIndices>::const_iterator it = clusters.begin(); it != clusters.end(); ++it)
+    {
+        //random number
+        int r = std::rand()%255;
+        int g = std::rand()%255;
+        int b = std::rand()%255;
+
+        CloudA::Ptr cloud_temp(new CloudA());
+        Eigen::Vector4f param_temp;
+        for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); ++pit)
+        {
+            PointA p = cloud_nonan->points[*pit];
+            p.r = r;
+            p.g = g;
+            p.b = b;
+
+            cloud_temp->points.push_back(p);
+            cloud_out->points.push_back(p);
+        }
+        plane_fitting(cloud_temp, param_temp);
+        params.push_back(param_temp);
+    }
+    // std::cout<<std::endl<<std::endl;
+}
+
+// compute param of one plane by RANSAC
+void plane::plane_fitting(CloudA::Ptr cloud_in, Eigen::Vector4f &param)
+{
+    pcl::PointIndices::Ptr ind(new pcl::PointIndices);
+    pcl::ModelCoefficients::Ptr coef(new pcl::ModelCoefficients);
+    pcl::SACSegmentation<PointA> seg;
+    seg.setOptimizeCoefficients(true);
+    seg.setModelType(pcl::SACMODEL_PLANE);
+    seg.setMethodType(pcl::SAC_RANSAC);
+    seg.setDistanceThreshold(0.05);  //0.05
+    seg.setInputCloud(cloud_in);
+    seg.segment(*ind, *coef);
+
+    for(int i=0; i<4; i++)
+    { 
+        param[i] = coef->values[i];
+        // std::cout<<param[i]<<" ";
+    }
+    // std::cout<<std::endl;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// try to find plane by the organization character, but it does not work...
 void plane::plane_detect(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out)
 {
+    cloud_out->clear();
+
     for(int i=0; i<cloud_in->points.size(); i++)
     {
         int row = i / cloud_in->width;
@@ -63,7 +169,7 @@ void plane::plane_detect(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out)
 }       
 
 //plane fitting, extract all planes
-void plane::plane_fitting(CloudA::Ptr cloud_in, std::vector<int> index_in, int points_count,
+void plane::multi_plane_fitting(CloudA::Ptr cloud_in, std::vector<int> index_in, int points_count,
                           CloudA::Ptr &cloud_out, std::vector<int> &index_out)
 {
     pcl::PointIndices::Ptr plane_pointindices(new pcl::PointIndices);
@@ -76,7 +182,7 @@ void plane::plane_fitting(CloudA::Ptr cloud_in, std::vector<int> index_in, int p
     seg.setInputCloud(cloud_in);
 
     boost::shared_ptr<std::vector<int>> index_in_indicesptr = boost::make_shared<std::vector<int>>(index_in);
-    int max_iteration_count = 4;
+    int max_iteration_count = 6;
     for(int i=0; i<max_iteration_count; i++)
     {
         seg.setIndices(index_in_indicesptr);
@@ -115,7 +221,7 @@ void plane::plane_fitting(CloudA::Ptr cloud_in, std::vector<int> index_in, int p
             p.g = g;
             p.b = b;
 
-            if(area > 6)
+            // if(area > 6)
             {
                 cloud_out->points.push_back(p);
                 index_out.push_back(plane_pointindices->indices[j]);
@@ -132,7 +238,7 @@ void plane::plane_fitting(CloudA::Ptr cloud_in, std::vector<int> index_in, int p
     }
 }
 
-//
+// compute plane area
 void plane::compute_area(CloudA::Ptr cloud_in, float &area)
 {
     //OBB,
@@ -154,39 +260,4 @@ void plane::compute_area(CloudA::Ptr cloud_in, float &area)
     // std::cout<<min_p.x<<"   "<<min_p.y<<"   "<<min_p.z<<std::endl;
     // std::cout<<max_p.x<<"   "<<max_p.y<<"   "<<max_p.z<<std::endl;
     std::cout<<diff_x<<"  "<<diff_y<<"   "<<diff_z<<std::endl;
-}
-
-//使用区域生长的方法 region growing segmentation，进行平面提取
-void plane::region_grow(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out)
-{
-    //计算法向量
-    pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
-    pcl::NormalEstimationOMP<PointA, pcl::Normal> n;
-    pcl::search::KdTree<PointA>::Ptr tree(new pcl::search::KdTree<PointA>);
-    tree->setInputCloud(cloud_in);
-    n.setInputCloud(cloud_in);
-    n.setSearchMethod(tree);
-    n.setKSearch(70);
-    n.compute(*normals);
-
-    //区域生长
-    std::vector<pcl::PointIndices> clusters;
-    pcl::RegionGrowing<PointA, pcl::Normal> reg;
-    reg.setMinClusterSize(400);
-    reg.setMaxClusterSize(100000);
-    reg.setSearchMethod(tree);
-    reg.setNumberOfNeighbours(6);
-    reg.setInputCloud(cloud_in);
-    reg.setInputNormals(normals);
-    reg.setSmoothnessThreshold(10/180.0*M_PI);
-    reg.setCurvatureThreshold(0.15);
-    reg.extract(clusters);
-
-    for (std::vector<pcl::PointIndices>::const_iterator it = clusters.begin(); it != clusters.end(); ++it)
-    {
-        for (std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); ++pit)
-        {
-            cloud_out->points.push_back(cloud_in->points[*pit]);
-        }
-    }
 }
