@@ -8,17 +8,27 @@ plane::plane(CloudA::Ptr &cloud)
     :_init_cloud(cloud), _ds_cloud(new CloudA()), _ca_cloud(new CloudA())
 { }
 
-void plane::process(CloudA::Ptr plane_cloud)
+void plane::process(CloudA::Ptr plane_cloud, std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp)
 {
     plane_cloud->clear();
+    gp.clear();
 
-    // voxel_grid(_init_cloud, _ds_cloud, 0.2);  //for faro 0.1~0.2
-    uniform_downsample(_init_cloud, _ds_cloud, 5);  //for kinect 5
+    // automatic recognition of kinect and faro
+    if(_init_cloud->height == 1)
+    {
+        // faro
+        voxel_grid(_init_cloud, _ds_cloud, 0.12); //0.12
+    }
+    else
+    {
+        // kinect
+        CloudA::Ptr temp_cloud(new CloudA());
+        uniform_downsample(_init_cloud, temp_cloud, 12);  //8
+        filter(temp_cloud, _ds_cloud);
+    }
 
     /* detect planes by region_grow, the performance is better than plan_fitting */
-    region_grow(_ds_cloud, plane_cloud, _plane_params);
-    
-
+    region_grow(_ds_cloud, plane_cloud, gp);
 
 
 
@@ -31,7 +41,7 @@ void plane::process(CloudA::Ptr plane_cloud)
 }
 
 // plane segmentation by region growing
-void plane::region_grow(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, std::vector<Eigen::Vector4f> &params)
+void plane::region_grow(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp)
 {
     // delete NAN points
     CloudA::Ptr cloud_nonan(new CloudA());
@@ -88,9 +98,9 @@ void plane::region_grow(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, std::vecto
             cloud_out->points.push_back(p);
         }
         plane_fitting(cloud_temp, param_temp);
-        params.push_back(param_temp);
+        group(param_temp, gp);
     }
-    // std::cout<<std::endl<<std::endl;
+    std::cout<<std::endl<<std::endl;
 }
 
 // compute param of one plane by RANSAC
@@ -107,12 +117,33 @@ void plane::plane_fitting(CloudA::Ptr cloud_in, Eigen::Vector4f &param)
     seg.segment(*ind, *coef);
 
     for(int i=0; i<4; i++)
-    { 
+    {
+        // ensuring the consistency of normal vector direction
         param[i] = coef->values[i];
-        // std::cout<<param[i]<<" ";
+        // if(coef->values[0] < 0)
+        // { param[i] = -1.0*param[i]; }
+
+        std::cout<<param[i]<<" ";
     }
-    // std::cout<<std::endl;
+    std::cout<<std::endl;
 }
+
+// divide the plans into three groups
+void plane::group(Eigen::Vector4f param, std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp)
+{
+    // compare which is max(fabs) among param[0] [1] [2]
+    float x = fabs(param[0]);
+    float y = fabs(param[1]);
+    float z = fabs(param[2]);
+
+    if(x>=y && x>=z)
+    { gp[0].push_back(param); }
+    else if(y>=x && y>=z)
+    { gp[1].push_back(param); }
+    else if(z>=x && z>=y)
+    { gp[2].push_back(param); }
+}
+
 
 
 

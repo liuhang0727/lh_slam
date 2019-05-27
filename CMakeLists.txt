@@ -22,6 +22,7 @@ find_package(catkin REQUIRED COMPONENTS
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(libLAS REQUIRED)
 
 #for OpenCV2 made by myself
 # set(CUDA_USE_STATIC_CUDA_RUNTIME OFF)
@@ -47,6 +48,8 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  ${YAML_CPP_DIRS}
+  ${libLAS_DIRS}
 )
 
 add_subdirectory(src)

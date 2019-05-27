@@ -1,14 +1,16 @@
 #ifndef COMMON_HEADERS_H
 #define COMMON_HEADERS_H
 
-//The headers that maybe used
+// The headers that maybe used
 
-//C++
+// C++
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <vector>
+#include <utility>  // pair
 #include <map>
+#include <unordered_map>
 #include <set>
 #include <unordered_set>
 #include <list>
@@ -19,14 +21,15 @@
 #include <numeric>
 #include <time.h>
 #include <stdlib.h>
+#include <unistd.h>
 // using namespace std;
 
-//Eigen 
+// Eigen 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 // using namespace Eigen;
 
-//PCL
+// PCL
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/io/pcd_io.h>
@@ -50,23 +53,22 @@
 #include <pcl/registration/transforms.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl_conversions/pcl_conversions.h>
-typedef pcl::PointXYZRGBA PointA;  //point type
+typedef pcl::PointXYZRGBA PointA;
 typedef pcl::PointXYZI PointI;
-// typedef pcl::PointXYZ PointT;
-typedef pcl::PointCloud<PointA> CloudA;  //cloud type
+typedef pcl::PointCloud<PointA> CloudA;
 typedef pcl::PointCloud<PointI> CloudI;
 // using namespace pcl;
 
-//OpenCV
+// OpenCV
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
-//feature detect in OpenCV3.x
+// feature detect in OpenCV3.x
 #include <opencv2/features2d.hpp>
 #include <opencv2/xfeatures2d.hpp>
 #include <opencv2/xfeatures2d/nonfree.hpp>
-//feature detect in OpenCV2.x
+// feature detect in OpenCV2.x
 // #include <opencv2/nonfree/features2d.hpp>
 // #include <opencv2/nonfree/nonfree.hpp>
 // #include <opencv2/nonfree>
@@ -82,5 +84,11 @@ typedef pcl::PointCloud<PointI> CloudI;
 #include <cv_bridge/cv_bridge.h>
 // using namespace ros;
 
+// yaml
+#include <yaml-cpp/yaml.h>
 
-#endif //COMMON_HEADERS_H
+// liblas
+#include <liblas/liblas.hpp>
+
+
+#endif // COMMON_HEADERS_H
