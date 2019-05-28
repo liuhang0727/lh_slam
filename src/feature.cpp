@@ -30,10 +30,10 @@ bool feature::init(ros::NodeHandle &node, ros::NodeHandle &private_node)
     private_node.getParam("skip_count", _skip_count);
 
     // subscribe and publish msgs
-    //  _sub_rgb = node.subscribe<sensor_msgs::CompressedImage>("/kinect2/sd/image_color_rect/compressed", 10, &feature::rgb_handler, this);
-    //  _sub_ir = node.subscribe<sensor_msgs::CompressedImage>("/kinect2/sd/image_ir/compressed", 10, &feature::ir_handler, this);
-    //  _sub_depth = node.subscribe<sensor_msgs::CompressedImage>("/kinect2/sd/image_depth/compressed", 10, &feature::depth_handler, this);
-    //  _pub_image = node.advertise<sensor_msgs::CompressedImage>("/match_image// compressed", 10);
+    // _sub_rgb = node.subscribe<sensor_msgs::CompressedImage>("/kinect2/sd/image_color_rect/compressed", 10, &feature::rgb_handler, this);
+    // _sub_ir = node.subscribe<sensor_msgs::CompressedImage>("/kinect2/sd/image_ir/compressed", 10, &feature::ir_handler, this);
+    // _sub_depth = node.subscribe<sensor_msgs::CompressedImage>("/kinect2/sd/image_depth/compressed", 10, &feature::depth_handler, this);
+    // _pub_image = node.advertise<sensor_msgs::CompressedImage>("/match_image// compressed", 10);
     _sub_cloud = node.subscribe<sensor_msgs::PointCloud2>("/kinect2/sd/points", 10, &feature::cloud_handler, this);
     _pub_cloud = node.advertise<sensor_msgs::PointCloud2>("/plane_cloud", 10);
     _pub_faro = node.advertise<sensor_msgs::PointCloud2>("/faro_cloud", 10);
@@ -128,11 +128,16 @@ inline void feature::cloud_handler(const sensor_msgs::PointCloud2::ConstPtr &clo
 {
     _mutex.lock();
 
-    _cloud->clear();
+     CloudA::Ptr temp_cloud(new CloudA());
+
+    // _cloud->clear();
     ros::Time time = ros::Time::now();
     _cloud_time = cloud_msg->header.stamp;
-    pcl::fromROSMsg(*cloud_msg, *_cloud);
+    pcl::fromROSMsg(*cloud_msg, *temp_cloud);
     _if_cloud = true;
+
+    // delete noise 
+    delete_noise(temp_cloud, _cloud);
 
     // transform z axis to up/down
     Eigen::Isometry3f T = getTransformYXZT(0, 0, 0, -90.0/180.0*M_PI, 0.0/180.0*M_PI, 0.0/180.0*M_PI);
@@ -141,8 +146,8 @@ inline void feature::cloud_handler(const sensor_msgs::PointCloud2::ConstPtr &clo
     Eigen::Isometry3f T1 = getTransformYXZT(0, 0, 0, 0.0/180.0*M_PI, 0.0/180.0*M_PI, -90.0/180.0*M_PI);
     pcl::transformPointCloud(*_cloud, *_cloud, T1.matrix());
 
-    Eigen::Isometry3f T2 = getTransformYXZT(0, 0, 0, 0.0/180.0*M_PI, -25.0/180.0*M_PI, 0.0/180.0*M_PI);
-    pcl::transformPointCloud(*_cloud, *_cloud, T2.matrix());
+    // Eigen::Isometry3f T2 = getTransformYXZT(0, 0, 0, 0.0/180.0*M_PI, -25.0/180.0*M_PI, 0.0/180.0*M_PI);
+    // pcl::transformPointCloud(*_cloud, *_cloud, T2.matrix());
 
     
     // save_cloud("/home/liuhang/Documents/data/faro/kinect.pcd", *_cloud);
@@ -405,24 +410,13 @@ void feature::gray_stretch()
 
 
 
-
-
-
-
-
-void feature::kinect()
-{
-
-}
-
 // load faro cloud 
 void feature::faro()
 {
     // load data
-    pcl::io::loadPCDFile<PointA>("/home/liuhang/Documents/data/faro/216_ds_trans.pcd", *_faro_cloud);
-    // Eigen::Isometry3f T = getTransformYXZT(0, 0, 0, 0.0/180.0*M_PI, 0.0/180.0*M_PI, 20.0/180.0*M_PI);
-    // pcl::transformPointCloud(*_faro_cloud, *_faro_cloud, T.matrix());
-   
+    pcl::io::loadPCDFile<PointA>("/home/liuhang/Documents/data/faro/216_ds_0.1.pcd", *_faro_cloud);
+    Eigen::Isometry3f T = getTransformYXZT(0, 0, 0, 0.0/180.0*M_PI, 0.0/180.0*M_PI, 20.0/180.0*M_PI);
+    pcl::transformPointCloud(*_faro_cloud, *_faro_cloud, T.matrix());
 
     // plane segmentation
     std::cout<<"faro plane params: "<<std::endl;
@@ -531,12 +525,10 @@ bool feature::plane_match()
     // transform cloud
     auto it = _scores.begin();
     Eigen::Matrix4f TT = it->second;
-    std::cout<<"TT: "<<std::endl<<TT.inverse().matrix()<<std::endl;
-    pcl::transformPointCloud(*_plane_cloud, *_plane_cloud, TT.inverse().matrix());
-
-    pcl::transformPointCloud(*_cloud, *_cloud, TT.inverse().matrix());
+    std::cout<<"TT: "<<std::endl<<TT.inverse()<<std::endl;
+    pcl::transformPointCloud(*_plane_cloud, *_plane_cloud, TT.inverse());
+    pcl::transformPointCloud(*_cloud, *_cloud, TT.inverse());
     
-
     return true;
 }
 
@@ -596,8 +588,10 @@ bool feature::pose_solve(std::vector<std::pair<Eigen::Vector4f, Eigen::Vector4f>
 double feature::score(Eigen::Matrix4f T)
 {
     // calculate sum of the distance to the nearest point as the socre
+    CloudA::Ptr temp_ds_cloud(new CloudA());
+    voxel_grid(_cloud, temp_ds_cloud, 0.15);
     CloudA::Ptr trans_cloud(new CloudA());
-    pcl::transformPointCloud(*_plane_cloud, *trans_cloud, T.inverse().matrix());
+    pcl::transformPointCloud(*temp_ds_cloud, *trans_cloud, T.inverse());
     
     double score = 0;
     for(int i=0; i<trans_cloud->points.size(); i++)

@@ -71,6 +71,23 @@ inline void filter(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out)
     sor.filter(*cloud_out);
 }
 
+// filter the noise of kinect in long range
+inline void delete_noise(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out)
+{
+    cloud_out->clear();
+
+    for(int i=0; i<cloud_in->points.size(); i++)
+    {
+        PointA p = cloud_in->points[i];
+        if(p.z < 8)
+        {
+            cloud_out->points.push_back(p);
+        }
+    }
+    cloud_out->height = 1;
+    cloud_out->width = cloud_out->points.size();
+}
+
 // load camera params form yaml file
 inline void load_params(std::string path, Eigen::Vector4f &params)
 {
@@ -126,5 +143,40 @@ inline void eigen2pcl(std::vector<Eigen::Vector4f> eig, CloudI::Ptr &cloud)
         cloud->points.push_back(p);
     }
 }
+
+/*** TODO: cannot work ? ***/
+// transform cloud based on the provided r and t
+template<typename PointT>
+inline void transform_cloud(pcl::PointCloud<PointT> cloud_in, pcl::PointCloud<PointT> &cloud_out,
+                            const Eigen::Matrix3f &r, const Eigen::Vector3f &t)
+{
+    cloud_out = cloud_in;
+    for(int i=0; i<cloud_out.points.size(); i++)
+    {
+        PointT p = cloud_out.points[i];
+        Eigen::Vector3f pei(p.x, p.y, p.z);
+        Eigen::Vector3f per;
+        per = pei * r + t;
+
+        cloud_out.points[i].x = per[0];
+        cloud_out.points[i].y = per[1];
+        cloud_out.points[i].z = per[2];
+    }
+}
+// transform cloud based on the provided T
+template<typename PointT>
+inline void transform_cloud(pcl::PointCloud<PointT> cloud_in, pcl::PointCloud<PointT> &cloud_out, 
+                            const Eigen::Matrix4f &T)
+{
+    Eigen::Vector3f t(T(0,3), T(1,3), T(2,3));
+    Eigen::Matrix3f r;
+    r << T(0,0), T(0,1), T(0,2), 
+         T(1,0), T(1,1), T(1,2), 
+         T(2,0), T(2,1), T(2,2);
+
+    transform_cloud(cloud_in, cloud_out, r, t);     
+}
+
+
 
 #endif //CLOUD_UTILS_H

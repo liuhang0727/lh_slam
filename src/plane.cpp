@@ -8,27 +8,27 @@ plane::plane(CloudA::Ptr &cloud)
     :_init_cloud(cloud), _ds_cloud(new CloudA()), _ca_cloud(new CloudA())
 { }
 
-void plane::process(CloudA::Ptr plane_cloud, std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp)
+void plane::process(CloudA::Ptr &plane_cloud, std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp)
 {
     plane_cloud->clear();
     gp.clear();
 
+    /* detect planes by region_grow, the performance is better than plan_fitting */
     // automatic recognition of kinect and faro
     if(_init_cloud->height == 1)
     {
         // faro
-        voxel_grid(_init_cloud, _ds_cloud, 0.12); //0.12
+        voxel_grid(_init_cloud, _ds_cloud, 0.10); //0.12
+        region_grow(_ds_cloud, plane_cloud, gp);
     }
     else
     {
         // kinect
-        CloudA::Ptr temp_cloud(new CloudA());
-        uniform_downsample(_init_cloud, temp_cloud, 12);  //8
-        filter(temp_cloud, _ds_cloud);
-    }
+        // uniform_downsample(_init_cloud, temp_cloud, 12);  //8
 
-    /* detect planes by region_grow, the performance is better than plan_fitting */
-    region_grow(_ds_cloud, plane_cloud, gp);
+        voxel_grid(_init_cloud, _ds_cloud, 0.10);
+        region_grow(_ds_cloud, plane_cloud, gp);
+    }
 
 
 
@@ -41,7 +41,8 @@ void plane::process(CloudA::Ptr plane_cloud, std::unordered_map<int, std::vector
 }
 
 // plane segmentation by region growing
-void plane::region_grow(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp)
+void plane::region_grow(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, 
+                        std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp)
 {
     // delete NAN points
     CloudA::Ptr cloud_nonan(new CloudA());
@@ -68,16 +69,17 @@ void plane::region_grow(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, std::unord
     std::vector<pcl::PointIndices> clusters;
     pcl::RegionGrowing<PointA, pcl::Normal> reg;
     reg.setSearchMethod(tree);
-    reg.setMinClusterSize(50);
-    reg.setMaxClusterSize(100000);
-    reg.setNumberOfNeighbours(4);  //4
-    reg.setSmoothnessThreshold(8/180.0*M_PI);  //8
-    reg.setCurvatureThreshold(0.1);  //0.1
+    reg.setMinClusterSize(30);  //50
+    reg.setMaxClusterSize(100000);  //100000
+    reg.setNumberOfNeighbours(10);  //4
+    reg.setSmoothnessThreshold(4/180.0*M_PI);  //8
+    reg.setCurvatureThreshold(0.02);  //0.1
     reg.setInputCloud(cloud_nonan);
     reg.setInputNormals(normals);
     reg.extract(clusters);
 
     // compute plane parmas for each cluster
+    std::unordered_map<int, std::vector<Eigen::Vector4f> > gp_temp;
     for (std::vector<pcl::PointIndices>::const_iterator it = clusters.begin(); it != clusters.end(); ++it)
     {
         //random number
@@ -98,8 +100,12 @@ void plane::region_grow(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, std::unord
             cloud_out->points.push_back(p);
         }
         plane_fitting(cloud_temp, param_temp);
-        group(param_temp, gp);
+        group(param_temp, gp_temp);
     }
+
+    // delete the redundant same planes
+    merge(gp_temp, gp);
+
     std::cout<<std::endl<<std::endl;
 }
 
@@ -144,20 +150,68 @@ void plane::group(Eigen::Vector4f param, std::unordered_map<int, std::vector<Eig
     { gp[2].push_back(param); }
 }
 
+// delete the redundant same planes
+void plane::merge(std::unordered_map<int, std::vector<Eigen::Vector4f> > gp_in, 
+           std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp_out)
+{
+    for(int i=0; i<3; i++)
+    {
+        // x y z
+        for(int j=0; j<gp_in[i].size(); j++)
+        {
+            if(gp_out[i].size() == 0)
+            {
+                gp_out[i].push_back(gp_in[i][0]);
+                continue;
+            }
+
+            bool same = false;
+            for(int k=0; k<gp_out[i].size(); k++)
+            {
+                float x = gp_in[i][j][0] - gp_out[i][k][0];
+                float y = gp_in[i][j][1] - gp_out[i][k][1];
+                float z = gp_in[i][j][2] - gp_out[i][k][2];
+                float d = gp_in[i][j][3] - gp_out[i][k][3];
+                if (fabs(x)<0.2 && fabs(y)<0.2 && fabs(z)<0.2 && fabs(d)<0.2)
+                {
+                    same = true;
+                    continue;
+                }
+            }
+            if(!same)
+            {
+                gp_out[i].push_back(gp_in[i][j]);
+            }
+        }
+    }
+
+    // cout
+    std::cout<<std::endl<<"合并之前平面参数: "<<std::endl;
+    for(int m=0; m<3; m++)
+    {
+        for(int i=0; i<gp_in[m].size(); i++)
+        {
+            std::cout<<gp_in[m][i][0]<<"  "<<gp_in[m][i][1]<<"  "
+            <<gp_in[m][i][2]<<"  "<<gp_in[m][i][3]<<std::endl;
+        }
+        std::cout<<std::endl;
+    }
+
+    // cout
+    std::cout<<std::endl<<"合并之后平面参数: "<<std::endl;
+    for(int m=0; m<3; m++)
+    {
+        for(int i=0; i<gp_out[m].size(); i++)
+        {
+            std::cout<<gp_out[m][i][0]<<"  "<<gp_out[m][i][1]<<"  "
+            <<gp_out[m][i][2]<<"  "<<gp_out[m][i][3]<<std::endl;
+        }
+        std::cout<<std::endl;
+    }
+}
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+/************************************** rubbish **************************************/
 
 // try to find plane by the organization character, but it does not work...
 void plane::plane_detect(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out)
@@ -292,3 +346,5 @@ void plane::compute_area(CloudA::Ptr cloud_in, float &area)
     // std::cout<<max_p.x<<"   "<<max_p.y<<"   "<<max_p.z<<std::endl;
     std::cout<<diff_x<<"  "<<diff_y<<"   "<<diff_z<<std::endl;
 }
+
+/************************************** rubbish **************************************/

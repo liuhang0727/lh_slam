@@ -13,10 +13,12 @@ class plane
     public:
     plane(CloudA::Ptr &cloud);
 
-    void process(CloudA::Ptr plane_cloud, std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp);
+    void process(CloudA::Ptr &plane_cloud, std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp);
     void region_grow(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp);
     void plane_fitting(CloudA::Ptr cloud_in, Eigen::Vector4f &param);
     void group(Eigen::Vector4f param, std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp);
+    void merge(std::unordered_map<int, std::vector<Eigen::Vector4f> > gp_in, 
+               std::unordered_map<int, std::vector<Eigen::Vector4f> > &gp_out);
 
 
 

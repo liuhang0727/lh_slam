@@ -63,7 +63,6 @@ class feature
 
         // load faro cloud 
         void faro();
-        void kinect();
 
         // plane association between kinect and faro
         bool plane_match();
