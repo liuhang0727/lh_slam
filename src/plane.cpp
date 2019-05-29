@@ -105,8 +105,6 @@ void plane::region_grow(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out,
 
     // delete the redundant same planes
     merge(gp_temp, gp);
-
-    std::cout<<std::endl<<std::endl;
 }
 
 // compute param of one plane by RANSAC
@@ -128,10 +126,7 @@ void plane::plane_fitting(CloudA::Ptr cloud_in, Eigen::Vector4f &param)
         param[i] = coef->values[i];
         // if(coef->values[0] < 0)
         // { param[i] = -1.0*param[i]; }
-
-        std::cout<<param[i]<<" ";
     }
-    std::cout<<std::endl;
 }
 
 // divide the plans into three groups
@@ -185,7 +180,7 @@ void plane::merge(std::unordered_map<int, std::vector<Eigen::Vector4f> > gp_in,
         }
     }
 
-    // cout
+    // // cout
     std::cout<<std::endl<<"合并之前平面参数: "<<std::endl;
     for(int m=0; m<3; m++)
     {

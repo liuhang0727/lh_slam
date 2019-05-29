@@ -407,9 +407,6 @@ void feature::gray_stretch()
     }
 }
 
-
-
-
 // load faro cloud 
 void feature::faro()
 {
@@ -431,7 +428,6 @@ void feature::faro()
 bool feature::plane_match()
 {
     _scores.clear();
-
 
     //
     std::cout<<"!!!!!!!!!!!!!!!"<<std::endl;

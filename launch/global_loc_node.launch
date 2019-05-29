@@ -1,0 +1,12 @@
+<!-- -->
+<launch>
+
+<arg name="cam_params_path" default="$(find lh_slam)/params/ir.yaml" /> 
+
+<node pkg="lh_slam" type="global_loc_node" name="global_loc_node" output="screen">
+    <param name="cam_params_path" value="$(arg cam_params_path)" />
+    <param name="faro_path" value="/home/liuhang/Documents/data/faro/216_ds_01.pcd" />
+    <param name="skip_count" value="0" />
+</node>
+
+</launch>

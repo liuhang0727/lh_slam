@@ -18,5 +18,10 @@ int main(int argc, char** argv)
 
     save_cloud("/home/liuhang/Documents/data/faro/plane.pcd", *pc);
 
+
+    //
+    Eigen::Vector4f params;
+    load_params("/home/liuhang/Documents/catkin_ws_kinect/src/lh_slam/params/ir.yaml", params);
+
     return 0;
 }

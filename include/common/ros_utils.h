@@ -5,10 +5,10 @@
 
 //publish cloud msg
 template<typename PointT>
-inline void publish_cloud_msg(ros::Publisher &publisher, 
+inline void publish_cloud_msg(const ros::Publisher &publisher, 
                               const typename pcl::PointCloud<PointT>::Ptr cloud,
                               const ros::Time &time, 
-                              std::string frame_id)
+                              const std::string frame_id)
 {
     sensor_msgs::PointCloud2 msg;
     pcl::toROSMsg(*cloud, msg);

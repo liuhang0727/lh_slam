@@ -73,12 +73,8 @@ class feature
         // compute score of each transform
         double score(Eigen::Matrix4f T);
 
-
-
         // match kinect and faro
         void match();
-
-
 
     private:
         std::thread _process_thread;  // the process thread

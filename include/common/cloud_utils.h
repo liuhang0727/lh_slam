@@ -7,7 +7,7 @@
 
 // down sample point cloud by VoxelGrid provied in PCL
 // but the organization will be destoryed
-inline void voxel_grid(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, double leaf_size)
+inline void voxel_grid(const CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, double leaf_size)
 {
     cloud_out->clear();
 
@@ -35,7 +35,7 @@ inline void voxel_grid(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, double leaf
 
 // down sample uniformly
 // 点云中含有NAN,导致创建kd-tree时出现错误!!!!
-inline void uniform_downsample(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, int interval) 
+inline void uniform_downsample(const CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, int interval) 
 {
     cloud_out->clear();
     
@@ -61,7 +61,7 @@ inline void uniform_downsample(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out, int
 }
 
 // filter the noise
-inline void filter(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out)
+inline void filter(const CloudA::Ptr &cloud_in, CloudA::Ptr &cloud_out)
 {
     // StatisticalOutlierRemoval 
     pcl::StatisticalOutlierRemoval<PointA> sor;
@@ -72,7 +72,7 @@ inline void filter(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out)
 }
 
 // filter the noise of kinect in long range
-inline void delete_noise(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out)
+inline void delete_noise(const CloudA::Ptr &cloud_in, CloudA::Ptr &cloud_out)
 {
     cloud_out->clear();
 
@@ -89,7 +89,7 @@ inline void delete_noise(CloudA::Ptr cloud_in, CloudA::Ptr &cloud_out)
 }
 
 // load camera params form yaml file
-inline void load_params(std::string path, Eigen::Vector4f &params)
+inline void load_params(const std::string path, Eigen::Vector4f &params)
 {
     YAML::Node y = YAML::LoadFile(path);
     params[0] = y[0]["params"][0].as<float>();
@@ -99,15 +99,17 @@ inline void load_params(std::string path, Eigen::Vector4f &params)
 }
 
 // transform depth image to cloud
-inline void create_cloud(cv::Mat rgb, cv::Mat depth, Eigen::Vector4f &params, CloudA::Ptr &cloud)
+inline void create_cloud(const cv::Mat &rgb, const cv::Mat &depth, Eigen::Vector4f &params, CloudA::Ptr &cloud)
 {
+    cloud->clear();
+
     for(int i=0; i<depth.rows; i++)
     {
         for(int j=0; j<depth.cols; j++)
         {
             PointA p;
             ushort d = depth.ptr<ushort>(i)[j];
-            p.z = double(d) / 1000;
+            p.z = double(d) / 1000.0;
             p.x = (j - params[2]) * p.z / params[0];
             p.y = (i - params[3]) * p.z / params[1];
             p.b = rgb.ptr<uchar>(i)[j*3];
@@ -120,7 +122,7 @@ inline void create_cloud(cv::Mat rgb, cv::Mat depth, Eigen::Vector4f &params, Cl
 
 // save cloud
 template<typename PointT>
-inline void save_cloud(std::string path, pcl::PointCloud<PointT> &cloud)
+inline void save_cloud(const std::string path, pcl::PointCloud<PointT> &cloud)
 {
     cloud.height = 1;
     cloud.width = cloud.points.size();
@@ -129,7 +131,7 @@ inline void save_cloud(std::string path, pcl::PointCloud<PointT> &cloud)
 }
 
 // transform plane params in std::vector<Eigen::Vector4f> to pcl::PointCloud<pcl::pointXYZI>
-inline void eigen2pcl(std::vector<Eigen::Vector4f> eig, CloudI::Ptr &cloud)
+inline void eigen2pcl(const std::vector<Eigen::Vector4f> eig, CloudI::Ptr &cloud)
 {
     cloud->clear();
 
@@ -147,7 +149,7 @@ inline void eigen2pcl(std::vector<Eigen::Vector4f> eig, CloudI::Ptr &cloud)
 /*** TODO: cannot work ? ***/
 // transform cloud based on the provided r and t
 template<typename PointT>
-inline void transform_cloud(pcl::PointCloud<PointT> cloud_in, pcl::PointCloud<PointT> &cloud_out,
+inline void transform_cloud(const pcl::PointCloud<PointT> cloud_in, pcl::PointCloud<PointT> &cloud_out,
                             const Eigen::Matrix3f &r, const Eigen::Vector3f &t)
 {
     cloud_out = cloud_in;
@@ -165,7 +167,7 @@ inline void transform_cloud(pcl::PointCloud<PointT> cloud_in, pcl::PointCloud<Po
 }
 // transform cloud based on the provided T
 template<typename PointT>
-inline void transform_cloud(pcl::PointCloud<PointT> cloud_in, pcl::PointCloud<PointT> &cloud_out, 
+inline void transform_cloud(const pcl::PointCloud<PointT> cloud_in, pcl::PointCloud<PointT> &cloud_out, 
                             const Eigen::Matrix4f &T)
 {
     Eigen::Vector3f t(T(0,3), T(1,3), T(2,3));
